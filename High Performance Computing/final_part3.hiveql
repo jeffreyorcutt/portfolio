@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS measurements;
+DROP TABLE IF EXISTS results;
+
+CREATE EXTERNAL TABLE IF NOT EXISTS measurements (city STRING, temperature FLOAT) ROW FORMAT DELIMITED FIELDS TERMINATED BY '\u003B' LOCATION '/user/maria_dev/measurements;
+
+CREATE TABLE IF NOT EXISTS results ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' AS
+SELECT city, MIN(temperature) AS min_temp, AVG(temperature) AS avg_temp, MAX(temperature) AS max_temp FROM measurements GROUP BY city;
+
+INSERT OVERWRITE DIRECTORY 'hdfs://sandbox-hdp.hortonworks.com/user/maria_dev/hive_out_1b/' ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' SELECT * FROM results;
