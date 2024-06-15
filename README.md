@@ -6,6 +6,7 @@ two Master's degree programs. For browsing ease, I've included a brief synopsis
 here of the project and the course for which it was completed. 
 
 ## R Projects
+* DS 740 - Final Project. I was given free reign on this project to identify a dataset and apply appropriate techniques to clean, describe, and discover any predictive relationships and customer taste preference clusterings. The dataset deals with reported profiles of coffee beans by trained tasters at the Coffee Quality Institute. After cleaning the data, I used Caret's random forest with double cross-validation to assess and pick an appropriate model and a hierachial clustering approach with the Nbclust package to build an appropriate hierachial tree to better understand the clusters. 
 
 ## Python Projects
 
