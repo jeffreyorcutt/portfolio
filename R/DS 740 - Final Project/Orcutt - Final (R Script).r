@@ -1,21 +1,4 @@
----
-title: "Final Project"
-author: "J Orcutt"
-date: "2024-04-08"
-output: html_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r library_loads}
+library(here)
 library(dplyr)
 library(corrplot)
 library(randomForest)
@@ -26,14 +9,11 @@ library(tidyr)
 library(mice)
 library(ggcorrplot)
 library(NbClust)
-```
 
-
-```{r data_load}
 #load the CSVs and combine them into a single dataframe. 
 
-arabica <- read.csv("arabica_data_cleaned.csv")
-robusta <- read.csv("robusta_data_cleaned.csv")
+arabica <- read.csv(here("coffee-quality-database","data", "arabica_data_cleaned.csv"))
+robusta <- read.csv(here("coffee-quality-database","data", "robusta_data_cleaned.csv"))
 #had five columns that did not align perfectly, establish which those are and 
 #rename the offending columns in robusta
 
@@ -53,9 +33,6 @@ robusta <- robusta %>% rename(
 
 joined_data <- rbind(arabica, robusta)
 
-```
-
-```{r explore_data}
 
 
 #move low-frequency countries into "other-continent" groupings
@@ -64,16 +41,16 @@ joined_data <- rbind(arabica, robusta)
 #Other-CentAmIsl - Panama, Haiti, U.S(Puerto Rico)
 
 joined_data$Country.of.Origin <- ifelse(joined_data$Country.of.Origin %in%
-  c("Japan","Myanmar","Philippines", "India", "China", "Vietnam","Laos",
-  "Papua New Guinea"), "Asia-Other", joined_data$Country.of.Origin)
+          c("Japan","Myanmar","Philippines", "India", "China", "Vietnam","Laos",
+            "Papua New Guinea"), "Asia-Other", joined_data$Country.of.Origin)
 
 joined_data$Country.of.Origin <- ifelse(joined_data$Country.of.Origin %in%
-  c("Cote d?Ivoire","Malawi", "Rwanda", "Zambia", "Burundi", "Mauritius"),
-  "Africa-Other", joined_data$Country.of.Origin)
+          c("Cote d?Ivoire","Malawi", "Rwanda", "Zambia", "Burundi", "Mauritius"),
+        "Africa-Other", joined_data$Country.of.Origin)
 
 joined_data$Country.of.Origin <- ifelse(joined_data$Country.of.Origin %in%
-  c("Panama", "Peru", "Ecuador","Haiti", "United States","United States (Puerto Rico)"),
-  "CentrAmIsl-Other", joined_data$Country.of.Origin)
+          c("Panama", "Peru", "Ecuador","Haiti", "United States","United States (Puerto Rico)"),
+        "CentrAmIsl-Other", joined_data$Country.of.Origin)
 
 #combine "Bluish-Green" into "Blue-Green", "none" isn"t a color, 
 #impute it with the median value (green)
@@ -94,7 +71,7 @@ joined_data$altitude_mean_meters <- ifelse(
 #None isn"t a valid drying processing method, impute with median value (Natural Dry)
 joined_data$Processing.Method <- ifelse(
   joined_data$Processing.Method == "None", "Natural...Dry", 
-    joined_data$Processing.Method)
+  joined_data$Processing.Method)
 
 #remove rows with missing country and Total.Cup.Points data
 joined_data <- joined_data %>% filter(Country.of.Origin != "")
@@ -105,87 +82,82 @@ joined_data <- joined_data %>% filter(Total.Cup.Points != 0)
 #cleanup the Harvest.Year column 
 joined_data <- joined_data %>% mutate(Year = 
                 case_when(Harvest.Year == "08/09 crop" ~ "2008", 
-                 Harvest.Year == "2009 - 2010" ~ "2009",
-                 Harvest.Year == "2009 / 2010" ~ "2009",
-                 Harvest.Year == "2009-2010" ~ "2009",
-                 Harvest.Year == "2009/2010" ~ "2009",
-                 Harvest.Year == "Sept 2009 - April 2010" ~ "2009",
-                 Harvest.Year == "December 2009-March 2010" ~ "2009",
-                 Harvest.Year == "Fall 2009" ~ "2009",
-                 Harvest.Year == "47/2010" ~ "2010",
-                 Harvest.Year == "4T/10" ~ "2010",
-                 Harvest.Year == "4t/2010" ~ "2010",
-                 Harvest.Year == "4T/2010" ~ "2010",
-                 Harvest.Year == "23 July 2010" ~ "2010",   
-                 Harvest.Year == "4T72010" ~ "2010", 
-                 Harvest.Year == "2010-2011" ~ "2010",    
-                 Harvest.Year == "March 2010" ~ "2010",                                         
-                 Harvest.Year == "1t/2011" ~ "2011",
-                 Harvest.Year == "1T/2011" ~ "2011",
-                 Harvest.Year == "3T/2011" ~ "2011",
-                 Harvest.Year == "Abril - Julio /2011" ~ "2011",
-                 Harvest.Year == "4t/2011" ~ "2011",
-                 Harvest.Year == "Spring 2011 in Colombia." ~ "2011", 
-                 Harvest.Year == "January 2011" ~ "2011",                                        
-                 Harvest.Year == "2011/2012" ~ "2011",
-                 Harvest.Year == "2013/2014" ~ "2013",
-                 Harvest.Year == "2014/2015" ~ "2015",
-                 Harvest.Year == "2015/2016" ~ "2015",
-                 Harvest.Year == "2016 / 2017" ~ "2016",
-                 Harvest.Year == "2016/2017" ~ "2016", 
-                 Harvest.Year == "2017 / 2018" ~ "2017",
-                 Harvest.Year == "Abril - Julio" ~ "",
-                 Harvest.Year == "August to December" ~ "",
-                 Harvest.Year == "January Through April" ~ "",
-                 Harvest.Year == "May-August" ~ "",
-                 Harvest.Year == "Mayo a Julio" ~ "",
-                 Harvest.Year == "mmm" ~ "",
-                 Harvest.Year == "TEST" ~ "",
-                 TRUE ~ Harvest.Year))
+                          Harvest.Year == "2009 - 2010" ~ "2009",
+                          Harvest.Year == "2009 / 2010" ~ "2009",
+                          Harvest.Year == "2009-2010" ~ "2009",
+                          Harvest.Year == "2009/2010" ~ "2009",
+                          Harvest.Year == "Sept 2009 - April 2010" ~ "2009",
+                          Harvest.Year == "December 2009-March 2010" ~ "2009",
+                          Harvest.Year == "Fall 2009" ~ "2009",
+                          Harvest.Year == "47/2010" ~ "2010",
+                          Harvest.Year == "4T/10" ~ "2010",
+                          Harvest.Year == "4t/2010" ~ "2010",
+                          Harvest.Year == "4T/2010" ~ "2010",
+                          Harvest.Year == "23 July 2010" ~ "2010",   
+                          Harvest.Year == "4T72010" ~ "2010", 
+                          Harvest.Year == "2010-2011" ~ "2010",    
+                          Harvest.Year == "March 2010" ~ "2010",                                         
+                          Harvest.Year == "1t/2011" ~ "2011",
+                          Harvest.Year == "1T/2011" ~ "2011",
+                          Harvest.Year == "3T/2011" ~ "2011",
+                          Harvest.Year == "Abril - Julio /2011" ~ "2011",
+                          Harvest.Year == "4t/2011" ~ "2011",
+                          Harvest.Year == "Spring 2011 in Colombia." ~ "2011", 
+                          Harvest.Year == "January 2011" ~ "2011",                                        
+                          Harvest.Year == "2011/2012" ~ "2011",
+                          Harvest.Year == "2013/2014" ~ "2013",
+                          Harvest.Year == "2014/2015" ~ "2015",
+                          Harvest.Year == "2015/2016" ~ "2015",
+                          Harvest.Year == "2016 / 2017" ~ "2016",
+                          Harvest.Year == "2016/2017" ~ "2016", 
+                          Harvest.Year == "2017 / 2018" ~ "2017",
+                          Harvest.Year == "Abril - Julio" ~ "",
+                          Harvest.Year == "August to December" ~ "",
+                          Harvest.Year == "January Through April" ~ "",
+                          Harvest.Year == "May-August" ~ "",
+                          Harvest.Year == "Mayo a Julio" ~ "",
+                          Harvest.Year == "mmm" ~ "",
+                          Harvest.Year == "TEST" ~ "",
+                          TRUE ~ Harvest.Year))
 
 #Shorten the drying method column values to industry terms, some weirdness was 
 #happening when named Processing.Method, so created a new column
 joined_data <- joined_data %>% mutate(Processing.Method_2 = 
-            case_when(Processing.Method == "Natural / Dry" ~ "Dry",
-                Processing.Method == "Pulped natural / honey" ~ "Honey Pulped",
-                Processing.Method == "Semi-washed / Semi-pulped" ~ "Semi-Pulped",
-                Processing.Method == "Washed / Wet" ~ "Wet",
-                TRUE ~ Processing.Method))
-```
+                case_when(Processing.Method == "Natural / Dry" ~ "Dry",
+                          Processing.Method == "Pulped natural / honey" ~ "Honey Pulped",
+                          Processing.Method == "Semi-washed / Semi-pulped" ~ "Semi-Pulped",
+                          Processing.Method == "Washed / Wet" ~ "Wet",
+                          TRUE ~ Processing.Method))
 
-```{r remove_identifying_meta}
 
 #getting rid of farm name, lot number, mill, certification information, 
 #company information, producer, number of bags, bag weights, 
 #in country partner, grading date, owner, variety
 joined_data <- joined_data %>% select(
   c("Country.of.Origin",
-  "Species",
-  "Processing.Method_2",
-  "Aroma",
-  "Flavor",
-  "Aftertaste",
-  "Acidity",
-  "Sweetness", 
-  "Body",
-  "Uniformity",
-  "Clean.Cup",
-  "Total.Cup.Points",
-  "Variety",
-  "Moisture", 
-  "Category.One.Defects", 
-  "Quakers", 
-  "Color",
-  "Category.Two.Defects",
-  "altitude_mean_meters", 
-  "Year"))
+    "Species",
+    "Processing.Method_2",
+    "Aroma",
+    "Flavor",
+    "Aftertaste",
+    "Acidity",
+    "Sweetness", 
+    "Body",
+    "Uniformity",
+    "Clean.Cup",
+    "Total.Cup.Points",
+    "Variety",
+    "Moisture", 
+    "Category.One.Defects", 
+    "Quakers", 
+    "Color",
+    "Category.Two.Defects",
+    "altitude_mean_meters", 
+    "Year"))
 
 # table(joined_data$Processing.Method)
 # table(joined_data$Color)
 
-```
-
-```{r factorize}
 #set several variables as factors
 joined_data$Color <- as.factor(joined_data$Color)
 joined_data$Country.of.Origin <- as.factor(joined_data$Country.of.Origin)
@@ -193,10 +165,6 @@ joined_data$Processing.Method <- as.factor(joined_data$Processing.Method)
 joined_data$Species <- as.factor(joined_data$Species)
 joined_data$Variety <- as.factor(joined_data$Variety)
 
-```
-
-
-```{r impute_NAs}
 #impute NAs with mean for numeric columns and mode for factor columns
 #this function was borrowed from: 
 #https://www.r-bloggers.com/2020/04/how-to-impute-missing-values-in-r/
@@ -210,18 +178,18 @@ getmode <- function(v){
 for (cols in colnames(joined_data)) {
   if (cols %in% names(joined_data[,sapply(joined_data, is.numeric)])) {
     joined_data <- joined_data %>% 
-    mutate(!!cols := replace(!!rlang::sym(cols),
-      is.na(!!rlang::sym(cols)),
-      mean(!!rlang::sym(cols), na.rm=TRUE)
+      mutate(!!cols := replace(!!rlang::sym(cols),
+                               is.na(!!rlang::sym(cols)),
+                               mean(!!rlang::sym(cols), na.rm=TRUE)
       )
-    )
+      )
   }
   else {
     joined_data <- joined_data %>% 
       mutate(!!cols := replace(!!rlang::sym(cols), 
-        !!rlang::sym(cols)=="", 
-        getmode(!!rlang::sym(cols))
-        )
+                               !!rlang::sym(cols)=="", 
+                               getmode(!!rlang::sym(cols))
+      )
       )
     
   }
@@ -229,9 +197,7 @@ for (cols in colnames(joined_data)) {
 md.pattern(joined_data)
 #table below shows no missing values remaining
 table(joined_data$Color)
-```
 
-```{r corr_plot}
 #make a correlation plot for below
 
 #make a dataframe with no indicator, no factors
@@ -242,13 +208,10 @@ joined_data_no_ind <- joined_data %>%
 #create correlation matrix
 corrdata <- cor(joined_data_no_ind)
 ggcorrplot(corrdata,
-         lab=F,
-         type="lower")
+           lab=F,
+           type="lower")
 
 #I didn"t end up using the correlation matrix in my paper. 
-```
-
-```{r dummy_var_categorical}
 
 #make a copy of the cleaned dataset for use in graphics and analysis
 orig_data <- joined_data
@@ -257,26 +220,19 @@ orig_data <- joined_data
 #to factors and remove original columns
 joined_data <- joined_data %>% rename(ProcMethod = Processing.Method_2)
 joined_data_tnsf<- dummyVars(" ~ Species + ProcMethod+ Color + Year ",
-  data = joined_data)
+                             data = joined_data)
 joined_data_ohe <- data.frame(predict(joined_data_tnsf, newdata = joined_data))
 joined_data <- joined_data %>% 
   select(-c(Species, Processing.Method, Color, Year, ProcMethod))
 joined_data <- cbind(joined_data, joined_data_ohe)
 joined_data_no_ind <- joined_data %>% select(-c("Country.of.Origin"))
 
-```
-
-
-```{r country_NIR}
 #this section is to establish the no information rate of the country variable. 
 country_tbl <- table(joined_data$Country.of.Origin)
 max_country <- tail(names(sort(table(joined_data$Country.of.Origin))), 1)
 max_country_n <- country_tbl[names(country_tbl) == max_country]
 country_NIR <- max_country_n / dim(joined_data[1])[1]
-```
 
-
-```{r model_selection, fig.dim = c(8, 6)}
 dataused = joined_data
 set.seed(88)
 ctrl <- trainControl(method="cv", number = 5)
@@ -284,27 +240,27 @@ ctrl <- trainControl(method="cv", number = 5)
 ncols <- ncol(joined_data)
 
 # random forest with all predictors
-  fit_caret_rf_select <-
-    train(Country.of.Origin ~ .,
-      data = dataused,
-      method = "rf",
-      na.action = na.roughfix,
-      tuneGrid = expand.grid(.mtry = c(1:(ncols -1 ))),
-      nodesize = c(1:10),
-      ntrees = c(100, 250, 500, 1000, 2000),
-      trControl = ctrl)
-  #random forest with a subset of predictors
-  fit_caret_rf_subset_select <- 
-    train(Country.of.Origin ~ Aroma + Flavor + Aftertaste +
-        Acidity + Sweetness + Body + Uniformity + Clean.Cup +
-        Total.Cup.Points + altitude_mean_meters,
-      data = dataused,
-      method = "rf",
-      na.action = na.roughfix,
-      tuneGrid = expand.grid(.mtry = c(1:9)),
-      nodesize = c(1:10),
-      ntrees = c(100, 250, 500, 1000, 2000),
-      trControl = ctrl)
+fit_caret_rf_select <-
+  train(Country.of.Origin ~ .,
+        data = dataused,
+        method = "rf",
+        na.action = na.roughfix,
+        tuneGrid = expand.grid(.mtry = c(1:(ncols -1 ))),
+        nodesize = c(1:10),
+        ntrees = c(100, 250, 500, 1000, 2000),
+        trControl = ctrl)
+#random forest with a subset of predictors
+fit_caret_rf_subset_select <- 
+  train(Country.of.Origin ~ Aroma + Flavor + Aftertaste +
+          Acidity + Sweetness + Body + Uniformity + Clean.Cup +
+          Total.Cup.Points + altitude_mean_meters,
+        data = dataused,
+        method = "rf",
+        na.action = na.roughfix,
+        tuneGrid = expand.grid(.mtry = c(1:9)),
+        nodesize = c(1:10),
+        ntrees = c(100, 250, 500, 1000, 2000),
+        trControl = ctrl)
 
 
 #find the maximum accuracy of each model
@@ -315,10 +271,7 @@ max(fit_caret_rf_subset_select$results$Accuracy)
 varImpPlot(fit_caret_rf_select$finalModel, n.var = 15)
 
 fit_caret_rf_select$bestTune
-```
 
-
-```{r double_cross_valid}
 ##### model assessment OUTER shell #####
 # produce loops for 5-fold cross-validation for model ASSESSMENT
 n = nrow(joined_data)  # number of data points
@@ -339,69 +292,66 @@ ctrl = trainControl(method="cv", number = 5)
 for (jj in 1: nfolds_outer) {    #  we will use jj for the outer loop index
   in_train_outer = (cvgroups != jj)     # logical vector indicating NOT group jj
   in_test_outer = (cvgroups == jj)     # logical vector indicating group jj
-
+  
   train_set_outer = joined_data[in_train_outer, ]  # all data EXCEPT for group jj
   test_set_outer = joined_data[in_test_outer, ]   # data in group jj
-
+  
   #specify data to be used - only use data from outer-loop training set
   dataused = train_set_outer
-####################### ENTIRE MODEL-SELECTION PROCESS ########################
-################ Step 1. ##############
-# KNN with all predictors
+  ####################### ENTIRE MODEL-SELECTION PROCESS ########################
+  ################ Step 1. ##############
+  # KNN with all predictors
   kvals = c(1:(ncol(joined_data)-1))
-
-# random forest with all predictors
+  
+  # random forest with all predictors
   fit_caret_rf_select_2 <-
     train(Country.of.Origin ~ .,
-      data = dataused,
-      method = "rf",
-      na.action = na.roughfix,
-      tuneGrid = expand.grid(.mtry = c(1:(ncols -1 ))),
-      nodesize = c(1:10),
-      ntrees = c(100, 250, 500, 1000, 2000),
-      trControl = ctrl)
+          data = dataused,
+          method = "rf",
+          na.action = na.roughfix,
+          tuneGrid = expand.grid(.mtry = c(1:(ncols -1 ))),
+          nodesize = c(1:10),
+          ntrees = c(100, 250, 500, 1000, 2000),
+          trControl = ctrl)
   #random forest with a subset of predictors
   fit_caret_rf_subset_select_2 <- 
     train(Country.of.Origin ~ Aroma + Flavor + Aftertaste +
-        Acidity + Sweetness + Body + Uniformity + Clean.Cup +
-        Total.Cup.Points + altitude_mean_meters,
-      data = dataused,
-      method = "rf",
-      na.action = na.roughfix,
-      tuneGrid = expand.grid(.mtry = c(1:9)),
-      nodesize = c(1:10),
-      ntrees = c(100, 250, 500, 1000, 2000),
-      trControl = ctrl)
-
-
-################ Step 2. ##############
+            Acidity + Sweetness + Body + Uniformity + Clean.Cup +
+            Total.Cup.Points + altitude_mean_meters,
+          data = dataused,
+          method = "rf",
+          na.action = na.roughfix,
+          tuneGrid = expand.grid(.mtry = c(1:9)),
+          nodesize = c(1:10),
+          ntrees = c(100, 250, 500, 1000, 2000),
+          trControl = ctrl)
+  
+  
+  ################ Step 2. ##############
   all_best_accuracies <- c(max(fit_caret_rf_select_2$results$Accuracy),
-                          max(fit_caret_rf_subset_select_2$results$Accuracy))
-
+                           max(fit_caret_rf_subset_select_2$results$Accuracy))
+  
   all_train_output <- list(fit_caret_rf_select_2, fit_caret_rf_subset_select_2)
-
+  
   bestmodel_train_output <- all_train_output[[which.max(all_best_accuracies)]]
-
+  
   print(paste("jj =", jj,
-    which.max(all_best_accuracies),
-    bestmodel_train_output$method))
+              which.max(all_best_accuracies),
+              bestmodel_train_output$method))
   # track best output in a list
   allbesttrain[[jj]] = bestmodel_train_output$method
- 
+  
   # predict test set in outer loop
   allpredicted_outer[in_test_outer] <-
     bestmodel_train_output |> predict(test_set_outer)
 }
 
- conf_mat = table(allpredicted_outer, joined_data$Country.of.Origin)
- conf_mat
- sum(diag(conf_mat))/n  # This is the most honest 
-                        # assessment of accuracy
- #bestmodel_train_output$finalModel
+conf_mat = table(allpredicted_outer, joined_data$Country.of.Origin)
+conf_mat
+sum(diag(conf_mat))/n  # This is the most honest 
+# assessment of accuracy
+#bestmodel_train_output$finalModel
 
-```
-
-```{r rf_single_full}
 #use the best model"s final model predicted results to talk about model 
 
 fit_caret_rf_select$finalModel
@@ -412,9 +362,9 @@ table(fit_caret_rf_select$finalModel$predicted,joined_data$Country.of.Origin)
 Accuracy_valid = sum(pred_coffee == joined_data$Country.of.Origin)/n
 Accuracy_valid
 
-```
 
-```{r hclust}
+########### hierarachial clustering ############
+
 #hierarchical clustering
 #this section prepares the data by scaling and selecting appropriate values
 
@@ -425,14 +375,11 @@ x_select_scaled <- scale(x_select)
 dist.x_select_scaled <- dist(x_select_scaled,method="euclidean")
 #dist.x_select_scaled
 
-```
-
-```{r find_best_k_clusters}
 # create two plots showing the diminishing gains in differences between clusters
 # Compute and plot wss for k = 2 to k = 15.
 k.max <- 50
 # data <- x_all_scaled
- data <- x_select_scaled
+data <- x_select_scaled
 # wss <- sapply(1:k.max, 
 #               function(k){kmeans(data, k, nstart=50,iter.max = 50 )$tot.withinss})
 # wss
@@ -446,10 +393,7 @@ nb <- NbClust(data, diss=NULL, distance = "euclidean",
               min.nc=2, max.nc=30, method = "kmeans", 
               index = "all", alphaBeale = 0.1)
 hist(nb$Best.nc[1,], breaks = max(na.omit(nb$Best.nc[1,])))
-#nb$Best.nc
-```
 
-```{r plot_dendograms}
 n = nrow(joined_data)  # number of data points
 hc.fit = hclust(dist.x_select_scaled,method="complete")
 linktype = "Complete Linkage, Euclidean Distance, p=10"
@@ -480,7 +424,7 @@ colused <- c("turquoise3", "red", "black","pink", "brown")[membHier];
 pchused <- c(0,3,5,8,16)[membHier]
 
 joined_data %>%
-ggplot( aes(x=Aftertaste, y=Acidity)) +
+  ggplot( aes(x=Aftertaste, y=Acidity)) +
   geom_point(color=colused, shape=pchused) +
   labs(title = "Lower scores for acidity tend to have lower aftertaste scores") + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
@@ -488,4 +432,4 @@ ggplot( aes(x=Aftertaste, y=Acidity)) +
 # started to explore for additional insights, nothing obvious
 # joined_data_hier <- cbind(joined_data, membHier)
 # table(joined_data_hier$membHier, orig_data$Variety)
-```
+
