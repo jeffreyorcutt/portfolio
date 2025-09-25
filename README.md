@@ -3,7 +3,8 @@ A sampling of my coding and data science projects from coursework.
 
 These projects were completed by me, Jeff Orcutt, during coursework for my 
 two Master's degree programs. For browsing ease, I've included a brief synopsis 
-here of the project and the course for which it was completed. 
+here of the project and the course for which it was completed. All course questions 
+are owned by the person who created them. ** All code is created by me and you do not have my permission to reuse my work. **
 
 
 
