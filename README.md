@@ -25,3 +25,6 @@ of two cities in Wisconsin. I leveraged Scala for Apache Spark in a Apache Zeppe
 
 ## R Projects
 * DS 740 - Final Project. I was given free reign on this project to identify a dataset and apply appropriate techniques to clean, describe, and discover any predictive relationships and customer taste preference clusterings. The dataset deals with reported profiles of coffee beans by trained tasters at the Coffee Quality Institute. After cleaning the data, I used Caret's random forest with double cross-validation to assess and pick an appropriate model and a hierachial clustering approach with the Nbclust package to build an appropriate hierachial tree to better understand the clusters. 
+
+## SQL Queries
+* DS 715 - Various queries collected throughout the semester. A handful of SQL examples of various major functions: aggregation, windows, subqueries, etc. Also includes some queries from OLAP cube queries using Microsoft SQL Server Analysis Services. 
