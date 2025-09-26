@@ -1,0 +1,504 @@
+---
+title: "Project 3"
+author: "Jeffrey Orcutt"
+date: "2023-11-15"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r library_loads, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(stringr) #for gsub 
+library(lubridate) #handles durations
+library(GGally) #ggpairs
+library(gtsummary) #tbl_uvregression
+library(hrbrthemes)
+library(stringr)
+library(broom) #glance
+library(rpart) #rpart
+library(DescTools) #PseudoR2
+library(tibble) #add_column
+library(flextable) #flextable
+library(gridExtra) #grid.arrange
+```
+
+```{r load_data, echo=FALSE, message=FALSE, warning=FALSE}
+data_20 <- read.csv("IM_Florida_20.csv")
+data_21 <- read.csv("IM_Florida_21.csv")
+```
+#Introduction
+Problem Definition: Given two datasets from Florida Ironman events in 2020 and 2021, we are challenged to answer two research questions: First, determine what and to what extent, if any, participants' 2020 performance data help explain their 2021 overall performance. Secondarily, establish whether those participants who participated in both races performed better than those who only participated in 2021.
+
+##Data introduction: 
+The datasets include observations of participants' names, demographics, event performance, and completion status. In 2020, 1354 participants were registered: 113 did not start, 99 did not finish, 2 were disqualified and 1140 finished the race. In 2021, 2333 participants were registered: 71 did not start, 563 did not finish, 2 were disqualified and 1697 finished the race. In 2021, there is a broad range of overall finish times ranging from 7:42:57 to 16:57:23.  
+
+```{r desc_tables, echo=FALSE, message=FALSE }
+# table(data_20$FinishStatus)
+# table(data_21$FinishStatus)
+
+```
+
+
+##Data Preparation: 
+Both problems ask directly about people who finished the race, I'll begin by removing those that did not start, finish, or were disqualified from either race. For simplicity's sake, I standardized all times into HH:MM:SS format. Divisional age groups were transformed into factors of their age group with two special groups being added: 98-98 encoding is the differently able-bodied competitors, and professionals were encoded as 99-99 age group. For further exploration, I created some time difference values from each of the events, overall, and calculated the difference in transition times - the time spent transitioning from one event to the next. 
+
+```{r clean_data, echo=FALSE, warning=FALSE}
+#remove DNS (did not start)
+data_20 <- data_20[data_20$FinishStatus != "DNS",] #113 DNS 
+data_21 <- data_21[data_21$FinishStatus != "DNS",] #70 DNS
+data_21 <- data_21[data_21$FinishStatus != "",] #1 blank finish status
+data_20 <- data_20[data_20$FinishStatus != "DQ",] #2 DQ 
+data_21 <- data_21[data_21$FinishStatus != "DQ",] #2 DQ
+data_20 <- data_20[data_20$FinishStatus != "DNF",] #99 DNS 
+data_21 <- data_21[data_21$FinishStatus != "DNF",] #563 DNS
+
+data_20$Gender <- as.factor(data_20$Gender)  #since the majority of participants are male, male
+data_21$Gender <- as.factor(data_21$Gender)  # will be treated as the base level
+data_20$Gender <- relevel(data_20$Gender, "Male")
+data_21$Gender <- relevel(data_21$Gender, "Male")
+
+data_20$SwimTime <- gsub( "([1-9][0-9]):([0-9]{2}):0{2}", "00:\\1:\\2", data_20$SwimTime) ## get column into hh:mm:ss
+data_21$SwimTime <- gsub( "([1-9]{2}):([0-9]{2}):0{2}", "00:\\1:\\2", data_21$SwimTime)
+
+data_20$Age_Group <- gsub("\\D([0-9]{2})-([0-9]{2})", "\\1-\\2", data_20$Division) ##captures age-grouping
+data_20$Age_Group <- gsub("(MPRO|FPRO)", "99-99", data_20$Age_Group) ##pros encoded as 99-99 age group
+data_20$Age_Group <- gsub("(MPC|FPC)", "98-98", data_20$Age_Group) ##phys challenged encoded 98-98
+data_20$Age_LB <- gsub("([0-9]{2})-([0-9]{2})", "\\1", data_20$Age_Group) ##makes a lower bound of age group for calculating differences
+data_20$Age_LB <- as.numeric(data_20$Age_LB)
+
+data_21$Age_Group <- gsub("\\D([0-9]{2})-([0-9]{2})", "\\1-\\2", data_21$Division)
+data_21$Age_Group <- gsub("(MPRO|FPRO)", "99-99", data_21$Age_Group)
+data_21$Age_Group <- gsub("(MPC|FPC)", "98-98", data_21$Age_Group) ##phys challenged encoded 98-98
+data_21$Age_LB <- gsub("([0-9]{2})-([0-9]{2})", "\\1", data_21$Age_Group) 
+data_21$Age_LB <- as.numeric(data_21$Age_LB)
+
+data_20 <- subset(data_20, select=-c(Division))
+data_21 <- subset(data_21, select=-c(Division))
+
+data_20$SwimTime <- hms(data_20$SwimTime)
+data_20$BikeTime <- hms(data_20$BikeTime)
+data_20$RunTime <- hms(data_20$RunTime)
+data_20$OverallTime <- hms(data_20$OverallTime)
+
+data_21$SwimTime <- hms(data_21$SwimTime)
+data_21$BikeTime <- hms(data_21$BikeTime)
+data_21$RunTime <- hms(data_21$RunTime)
+data_21$OverallTime <- hms(data_21$OverallTime)
+
+
+data_20$TransitionTime <- as.numeric(as.duration(data_20$OverallTime - (data_20$RunTime + data_20$BikeTime + data_20$SwimTime)))
+
+data_21$TransitionTime <- as.numeric(as.duration(data_21$OverallTime - (data_21$RunTime + data_21$BikeTime + data_21$SwimTime)))
+
+data_20$Age_Group <- as.factor(data_20$Age_Group)
+data_21$Age_Group <- as.factor(data_21$Age_Group)
+```
+
+
+##Matching Data to Problems:  
+Because the datasets are being joined with the Name value as their primary keys, as such, some names may match but not be the same person in both years.  Some validation was done to check the matched participant’s gender and age but it is possible that error was introduced into this analysis at this point. Of the 170 participants who matched by names only, only 1 participant was removed because of age group mismatches. Additionally, I performed checks for an extreme increase in overall race time of 3 hours or more, and a decrease of 2 hours or more. While some records were identified as fulfilling these criteria, none were removed from the final dataset. Lastly, changes in gender from year to year with none identified.
+
+``` {r inner_join_data, echo=FALSE}
+data_inner_joined <-inner_join(data_20, data_21, by="Name", suffix = c('.2020', '.2021'))
+# data_right_joined <-right_join(data_20, data_21, by="Name", suffix = c('.2020', '.2021'))
+#data_inner_joined <-stringdist_inner_join(data_20, data_21, max_dist=1, by="Name")
+
+```
+
+```{r check_join, echo=FALSE}
+#looking for where the age group change doesn't make sense
+data_inner_joined_ages_only <- subset(data_inner_joined, select=c("Name", "Age_LB.2020", "Age_LB.2021", "Age_Group.2020", "Age_Group.2021" ))
+data_issues_age_incr <- data_inner_joined_ages_only[(data_inner_joined_ages_only$Age_LB.2021 - data_inner_joined_ages_only$Age_LB.2020) > 7,]
+data_issues_age_decr <- data_inner_joined_ages_only[(data_inner_joined_ages_only$Age_LB.2021 - data_inner_joined_ages_only$Age_LB.2020) < 0,]
+data_issues_age_noeq <- data_inner_joined_ages_only[(data_inner_joined_ages_only$Age_LB.2021 != data_inner_joined_ages_only$Age_LB.2020),]
+data_issues_age_incr <- na.omit(data_issues_age_incr)
+data_issues_age_decr <- na.omit(data_issues_age_decr)
+data_issues_age_noeq <- na.omit(data_issues_age_noeq)
+
+
+# print("List of all Names and Age Groups from 20-21 who changed age groups by more than 7 years")
+# paste(data_issues_age_incr$Name, ": ", data_issues_age_incr$Age_Group.2020, data_issues_age_incr$Age_Group.2021)
+# print("List of all Names and Age Groups from 20-21 who changed age groups in the negative direction")
+# paste(data_issues_age_decr$Name, ": ", data_issues_age_decr$Age_Group.2020, data_issues_age_decr$Age_Group.2021)
+
+
+#looking for performance changes between years that are extreme: overall increases of 3 hours, decreases of 2 hours
+data_issues_times_incr <- data_inner_joined[as.numeric(
+  as.duration(
+    data_inner_joined$OverallTime.2021-data_inner_joined$OverallTime.2020)) > 10800,]
+data_issues_times_incr <- na.omit(data_issues_times_incr)
+data_issues_times_decr <- data_inner_joined[as.numeric(
+  as.duration(
+    data_inner_joined$OverallTime.2020-data_inner_joined$OverallTime.2021)) > 7200,]
+data_issues_times_decr <- na.omit(data_issues_times_decr)
+
+#checked to see if any gender changes occurred, since not, we will remove one of the gender columns when we remove the other unnecessary columns
+check_gender_changes <- data_inner_joined[data_inner_joined$Gender.2020 != data_inner_joined$Gender.2021,]
+```
+
+```{r removal_bad_records_and_non_finishers, echo=FALSE, warning=FALSE}
+
+# min(data_right_joined$OverallTime, na.rm=TRUE)
+# max(data_right_joined$OverallTime, na.rm=TRUE)
+data_inner_joined <- data_inner_joined %>% mutate(age_diff = Age_LB.2021 - Age_LB.2020)
+data_inner_joined <- data_inner_joined[which(data_inner_joined$age_diff <= 7),]
+data_inner_joined <- data_inner_joined[-which(data_inner_joined$age_diff < 0),]
+data_inner_joined <- subset(data_inner_joined, select=-c( Age_LB.2021, age_diff))
+```
+
+``` {r echo=FALSE}
+#had a total of three extras, the two John Briggs and also Marissa Mcauliffe....
+#the two john briggs will be purged, Marissa will be retained as the only reason I can 
+#find that she was purged was the NAs in the event times in 2021...overall time improvement
+#seems reasonable, age group and such all seem reasonable
+EdwardsBibs <- read.csv("EdwardsBibs.csv")
+extras <- data_inner_joined[ !( data_inner_joined$Bib.2020 %in% EdwardsBibs$Bib.2020 ), ]
+data_inner_joined <- subset(data_inner_joined, data_inner_joined$Name != "John Briggs")
+```
+I ended the preparation steps with two sets of data: one that will be used to investigate the previous year’s event times on the following year's overall time and another dataset that has all the finishers from 2021 data with one additional column denoting whether that person also finished the previous year’s race or not to investigate if there is a statistically significant difference in the performances of finishers who competed in both years versus those that only competed in 2021.
+
+
+``` {r cleanup_df, echo=FALSE, warning=FALSE}
+# data_inner_joined <- data_inner_joined %>% mutate(overall_time_diff = as.numeric(OverallTime.2021 - OverallTime.2020))
+# data_inner_joined <- data_inner_joined %>% mutate(bike_time_diff = as.numeric(BikeTime.2021 - BikeTime.2020))
+# data_inner_joined <- data_inner_joined %>% mutate(run_time_diff = as.numeric(RunTime.2021 - RunTime.2020))
+# data_inner_joined <- data_inner_joined %>% mutate(swim_time_diff = as.numeric(SwimTime.2021 - SwimTime.2020))
+# data_inner_joined <- data_inner_joined %>% mutate(trans_time_diff = as.numeric(TransitionTime.2021 - TransitionTime.2020))
+data_inner_joined <- subset(data_inner_joined, select=-c(RunRank.2020, SwimRank.2020, BikeRank.2020,  RunRank.2021, SwimRank.2021, BikeRank.2021, OverallRank.2020, OverallRank.2021, DivisionRank.2020, DivisionRank.2021, Bib.2020, Bib.2021, Country.2020, Country.2021, TransitionTime.2021, RunTime.2021,  SwimTime.2021, BikeTime.2021, OverallTime.2020 ))
+
+rm(data_issues_age_decr, data_issues_age_incr, data_issues_age_noeq, data_issues_times_decr, data_issues_times_incr, check_gender_changes, data_inner_joined_ages_only)
+
+data_21 <- data_21 %>% mutate(Prev_Yr = case_when(
+  data_21$Name %in% data_inner_joined$Name ~ 1,
+  TRUE ~ 0
+))
+data_20 <- data_20 %>% mutate(Next_Yr = case_when(
+  data_20$Name %in% data_inner_joined$Name ~ 1,
+  TRUE ~ 0
+))
+# data_right_joined <- data_right_joined %>% mutate(participated_both = case_when(is.na(FinishStatus.2020) == FALSE ~ 1, TRUE ~ 0))
+# data_right_joined$participated_both <- as.factor(data_right_joined$participated_both)
+# data_right_joined <- subset(data_right_joined, select=-c(RunRank.2020, SwimRank.2020, BikeRank.2020,  RunRank.2021, SwimRank.2021, BikeRank.2021, OverallRank.2020, OverallRank.2021, DivisionRank.2020, DivisionRank.2021, Bib.2020, Bib.2021, Country.2020, Country.2021, Gender.2020, TransitionTime.2020, TransitionTime.2020, RunTime.2020,  SwimTime.2020, BikeTime.2020, OverallTime.2020, Age_Group.2020 ))
+
+```
+
+``` {r q1_distribution_viz, echo=FALSE, warning=FALSE}
+
+q1_dist_plot <- ggplot(data_inner_joined, aes(x=Age_Group.2021, fill=FinishStatus.2021)) + labs(title="Number of 2021 Finishers by Gender",  caption="Age Group 98-98: Differently Abled, Age Group 99-99: Professional Athlete") +xlab("Age Group")+geom_histogram(stat="count") + theme(legend.position="none")
+```
+
+```{r q2_dist_viz, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%"}
+
+data_21 <- data_21 %>% mutate_at(c('SwimTime', 'BikeTime','RunTime', 'OverallTime' ), as.numeric)
+data_inner_joined <- data_inner_joined %>% mutate_at(c('SwimTime.2020', 'BikeTime.2020','RunTime.2020', 'OverallTime.2021' ), as.numeric)
+
+data_21$Prev_Yr <- as.factor(data_21$Prev_Yr)
+q2_dist_plot <- ggplot(data_21, aes(x=OverallTime, fill=Prev_Yr)) + 
+  geom_histogram(binwidth=600, color = "#e9ecef", alpha=0.6, position='identity') +
+  scale_fill_manual(values=c("#69b3a2","#404080")) +
+  theme_ipsum() +
+  labs( title="2021 Completion Times(s) by 2020 Athletes") + 
+  xlab( "Time in Seconds") + 
+  ylab("Number of finishers") 
+```
+I created two exploratory visualizations for this portion of the project to become more familiar with the data. The visualization on the left shows the age distribution of all finishers in 2021. The visualization on the right describes the distribution of overall finish time by previous participation, where green is the people who have participated in both 2020 and 2021.   
+```{r show_dist_viz, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%", echo=FALSE}
+q1_dist_plot
+q2_dist_plot
+
+```
+  
+Lastly, I created a plot to pairwise look at the individual event performances in 2020 of those who completed both races against their performance in 2021 to see if there were correlations. It would appear that there is a statistically significant correlation for all three events against 2021 performance and that relationship is likely positively correlated. All four distributions of time have a roughly normal distribution and the three event times have a positive, roughly linear trend line when graphed against the overall finish time. 
+
+  
+```{r ggpairs_plot, echo=FALSE, message=FALSE, out.width="70%"}
+data_inner_joined <- data_inner_joined %>% mutate_at(c('SwimTime.2020', 'BikeTime.2020','RunTime.2020', 'OverallTime.2021' ), as.numeric)
+gg_data <- data_inner_joined[,c(2,3,4,5,8, 10)]
+gg_data <- na.omit(gg_data) #remove NAs from data set
+
+lowerfun <- function(data, mapping) {
+  ggplot(data = data, mapping = mapping)+ 
+    geom_point(alpha = .25) + 
+    geom_smooth(method = "loess", formula = y ~ x,
+    fill = "blue", color = "red", linewidth = 0.5)
+}
+
+ggpairs(gg_data, 
+        lower = list(continuous = wrap(lowerfun)),
+        title="2020 Event Times versus Overall Time 2021")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+  
+Outliers exist in the Bike and Run Times when viewed by gender. Several males took more than 7:30:00 in the bicycling event while a few completed the event in 5:00:00. On the female side of the bicycling event, several finished in less than 6:15:00. In the running event, one male finished in 8:07:10 to complete the event and six females finished in less than 3:40:00. Four females finished the entire race in under 10:00:00. 
+Overall, I would expect that the longer it took participants to complete each of the three events in 2020 that their 2021 overall time would be longer as well. 
+
+
+``` {r multi_colinearity_check, message=FALSE, echo = FALSE, warning=FALSE, out.width="50%"}
+library(corrplot)
+temp_data <-NA
+temp_data$OT.2021 <- data_inner_joined$OverallTime.2021
+
+temp_data$SwimTime <- data_inner_joined$SwimTime.2020
+temp_data$BikeTime <- data_inner_joined$BikeTime.2020
+temp_data$RunTime <- data_inner_joined$RunTime.2020
+temp_data <- as.data.frame(temp_data)
+temp_data <- temp_data[,-1]
+#corr_matrix <- corrplot(cor(temp_data), method="number")
+rm(temp_data)
+```
+
+
+#Univariate Analysis  
+When I performed univariate analysis on assessing the individual effects of individual event times from 20201 on overall performance in 2021, I found a couple of effects that are worth discussing. To begin this process, I fitted four models one for each of the three 2021 event times and the time spent transitioning between events in 2021 against the response variable of the 2022 overall time. All four models consisting of individual times produced models that were statistically significant and all were positive relationships. As a validity check, I took the step of checking for multi-colinearity and found that while there are correlations, none of the individual features would be considered highly correlated with another feature having a correlation value of .9 or more.
+
+Firstly, the largest individual effect wasn’t even an event, but rather the amount of time it takes to transition from event to event. For every second spent transitioning, one could, with 95% confidence, estimate that they are adding between 8.3 and 12 seconds to their overall time. This makes sense because the time between events is essentially non-productive time and participants have a wide variety of experiences and different goals when choosing to participate: some are there to win, some are there to simply finish. Additionally, transition time may be used to take care of pressing needs such as eating, injuries, and other self-care needs.  
+The second largest individual effect was the swim time. When viewed by itself, one would expect every second spent swimming to have an effect on overall time in 2021 of between 5.6 to 7.8 seconds. A participant’s swimming time appears to explain a significant portion of their overall performance, as it is the first event participants encounter and generally regarded as the most difficult so a longer performance in this event indicates that a participant is going to have a disproportionately longer overall time.  
+
+Lastly, all four features were individually statistically significant in this univariate analysis. All four features indicated a larger than one-to-one ratio of seconds per event to overall performance as individual features. I anticipate that a participant's overall time will be more affected by their swim and transition times than their run and bike times.  
+  
+``` {r linear_models, echo=FALSE, message=FALSE, warning=FALSE,  fig.show="hold", out.width="60%"}
+model_ov_swim <- lm(OverallTime.2021 ~ SwimTime.2020, data=data_inner_joined)
+model_ov_bike <- lm(OverallTime.2021 ~ BikeTime.2020, data=data_inner_joined)
+model_ov_run  <- lm(OverallTime.2021 ~ RunTime.2020, data=data_inner_joined)
+model_ov_trans<- lm(OverallTime.2021 ~ TransitionTime.2020, data=data_inner_joined)
+
+#the above models all have the same coefficients as the table produced by the gtsummary module's tbl_uvregression tool below
+
+univ_table <- data_inner_joined %>% select(SwimTime.2020, BikeTime.2020, RunTime.2020, TransitionTime.2020, OverallTime.2021) %>% tbl_uvregression(y=OverallTime.2021, method = lm, hide_n=TRUE)
+univ_table$table_body$var_label <- substr(univ_table$table_body$var_label,1,nchar(univ_table$table_body$var_label)-5)
+
+#extract the features from the table created above to create a data frame for the 
+#forest plot
+mod_table <- NA
+
+mod_table$model_feature <- univ_table$table_body$variable
+mod_table$model_feature <- substr(mod_table$model_feature,1,nchar(mod_table$model_feature)-5)
+mod_table$model_feature <- as.factor(mod_table$model_feature)
+mod_table$index <- c(1:4)
+mod_table$estimate <- univ_table$table_body$estimate
+mod_table$low_bound <- univ_table$table_body$conf.low
+mod_table$high_bound <- univ_table$table_body$conf.high
+
+mod_table <- as.data.frame(mod_table)
+
+
+univ_table
+ggplot(data=mod_table, aes(y=index, x=estimate,xmin=low_bound, xmax=high_bound)) + 
+  geom_point() +  
+  geom_errorbarh(height=0.1) + 
+  scale_y_continuous(name = "Feature", breaks=1:nrow(mod_table), labels=mod_table$model_feature) +
+  xlab("95% Confidence Interval of Effect") +
+  scale_x_continuous(breaks = round(seq(min(mod_table$low_bound), max(mod_table$high_bound), by = 2.0))) +
+  labs(title="Effect Estimates") +
+  theme_ipsum() 
+#I was unable to get these two to plot next to each other no matter what I changed, I ended up needing to manually create a table in word
+#to bring them onto the same inset formatting
+
+# # # I received feedback that these effects appear to be in minutes, they're not - the conversion to numeric from hms around line 198, the first lines of q2_dist_viz section. This conversion moves the HMS number to seconds, not minutes. All subsequent calculations are made using seconds. 
+```
+
+#Multiple Regression Models 
+ I created six multiple regression models to investigate the ability of 2020 event times and demographic combinations to assess how well they compare with each other in predicting 2021 times. These models all had different combinations of the features to try to find the model that best explains the relationships between 2020 events and 2021 performance. 
+
+
+
+
+``` {r make_four_models, echo=FALSE} 
+
+model_mult_1 <- lm(OverallTime.2021 ~ Age_Group.2020 + Gender.2020 + SwimTime.2020 + BikeTime.2020 + RunTime.2020 + TransitionTime.2020, data = data_inner_joined)
+#summary(model_mult_1)
+
+#table(data_inner_joined$Age_Group.2020)
+
+data_inner_joined <- data_inner_joined %>% 
+  mutate(age_band = case_when(Age_LB.2020 <= 29 ~ "18-29",
+                              Age_LB.2020 <= 44 ~ "30-44", 
+                              Age_LB.2020 <= 59 ~ "45-59", 
+                              Age_LB.2020 <= 79 ~ "60-79",
+                              Age_LB.2020 <= 98 ~ "98-98",
+                              TRUE ~ "99-99"))
+#table(data_inner_joined$age_band)
+
+data_inner_joined$age_band <- as.factor(data_inner_joined$age_band)
+model_mult_2 <- lm(OverallTime.2021 ~ Gender.2020 * age_band + SwimTime.2020 + BikeTime.2020 + RunTime.2020 + TransitionTime.2020, data = data_inner_joined)
+#summary(model_mult_2)
+
+model_mult_3 <- lm(OverallTime.2021 ~ Gender.2020 * (SwimTime.2020 + BikeTime.2020 + RunTime.2020 + TransitionTime.2020), data = data_inner_joined)
+#summary(model_mult_3)
+
+model_mult_4 <- lm(OverallTime.2021 ~ (SwimTime.2020 + BikeTime.2020 + RunTime.2020 + TransitionTime.2020), data = data_inner_joined)
+#summary(model_mult_4)
+# 
+# glance(model_mult_1)
+# glance(model_mult_2)
+# glance(model_mult_3)
+# glance(model_mult_4)
+
+```
+
+``` {r make_two_more_models, echo=FALSE}
+
+model_mult_5 <- lm(OverallTime.2021 ~ SwimTime.2020 + BikeTime.2020 + RunTime.2020 + Age_Group.2020 , data = data_inner_joined)
+
+model_mult_6 <- lm(OverallTime.2021 ~  SwimTime.2020 + BikeTime.2020 + RunTime.2020 + TransitionTime.2020 + Age_Group.2020, data = data_inner_joined)
+
+
+```
+The end goal of this process of trial and error with modeling is to create an interpretable model that is explanatory in the relationship between the features and the response variable of interest. This requires two things in my opinion, a model that can be explained in detail to those with less knowledge and that the model can accurately predict the variable of interest. The features contained in the model generally need to be statistically significant.   
+  
+In comparing the models to one another, two standard methods include comparing values known as the adjusted R squared and the Akaike Information Criterion (AIC). For our models, the Adjusted R Squared value explains how much of the variability in their 2021 Overall Time is explained by the features of the model. In adjusted r squared, the values range between zero and one, where one is a perfect fit - therefore higher is better. AIC is simply a metric that compares the goodness-of-fit of the model against the data while penalizing the model for the number of model coefficients and helps prevent overfitting.  
+
+``` {r create_model_table, echo=FALSE}
+model_mult_1_AIC <- extractAIC(model_mult_1, k=2)[2] 
+model_mult_2_AIC <- extractAIC(model_mult_2, k=2)[2] 
+model_mult_3_AIC <- extractAIC(model_mult_3, k=2)[2] 
+model_mult_4_AIC <- extractAIC(model_mult_4, k=2)[2] 
+model_mult_5_AIC <- extractAIC(model_mult_5, k=2)[2] 
+model_mult_6_AIC <- extractAIC(model_mult_6, k=2)[2] 
+
+model_mult_1_r2 <- summary(model_mult_1)$adj.r.squared
+model_mult_2_r2 <- summary(model_mult_2)$adj.r.squared
+model_mult_3_r2 <- summary(model_mult_3)$adj.r.squared
+model_mult_4_r2 <- summary(model_mult_4)$adj.r.squared
+model_mult_5_r2 <- summary(model_mult_5)$adj.r.squared
+model_mult_6_r2 <- summary(model_mult_6)$adj.r.squared
+
+model_attr_list_2 = list()
+model_attr_list <- list(as.list(attr(model_mult_1$terms, "predvars")),
+                   as.list(attr(model_mult_5$terms, "predvars")),
+                   as.list(attr(model_mult_6$terms, "predvars")),
+                   as.list(attr(model_mult_2$terms, "predvars")),
+                   as.list(attr(model_mult_4$terms, "predvars")),
+                   as.list(attr(model_mult_3$terms, "predvars")))
+temp <- character()
+
+for(model in model_attr_list){
+  temp <- ''
+  i <- 1
+  size <- 0 
+
+  for(attr in model){
+    size <- length(model)
+    attr <- sub('.2020', '', attr)
+    if(attr == "list" | attr == "OverallTime.2021") {
+      i <- i+1
+      next
+
+    }
+    else if(i == 3) {
+      temp <- paste(temp, attr, sep ='')
+    }
+    else if(i < size) {
+      temp <- paste(temp, ', ', attr, sep='')
+    }
+    else {
+      temp <- paste(temp, ', and ', attr, sep='')
+    }
+    i <- i + 1
+  }
+  model_attr_list_2 <- append(model_attr_list_2, temp)
+}
+row_names <- list( "Attributes", "AIC", "Adjusted R^2", "Subjective Rank", "Rejection Reason")
+model_names <- list("All Predictors",
+                    "Performance Events and Age Division",
+                    "All Times and Age Division",
+                    "Age Bands and All Predictors", 
+                    "All Times", 
+                    "Event Times with Gender Interaction"
+                    )
+
+model_AICs <- list(round(model_mult_1_AIC,4), round(model_mult_5_AIC,4), 
+                  round(model_mult_6_AIC,4),  round(model_mult_2_AIC,4),
+                  round(model_mult_4_AIC,4),  round(model_mult_3_AIC,4))
+
+model_r2s <- list(round(model_mult_1_r2,4),  round(model_mult_5_r2,4), 
+                  round(model_mult_6_r2,4),  round(model_mult_2_r2,4),
+                  round(model_mult_4_r2,4),  round(model_mult_3_r2,4))
+model_df <- data.frame(row.names = model_names)
+# model_df <- data.frame(name=model_names, attributes=model_attr_list_2, AIC=model_AICs, RSquared = model_r2s)
+# for(i in c(1:length(model_AICs))) {
+#   temp <- list(model_names[i], model_attr_list_2[i], model_AICs[i], model_r2s[i])
+#   model_df$row_names[i] <- temp
+#   temp <- NA
+# }
+
+#model_df$name <- as.character(model_names)
+model_df$attributes <- as.character(model_attr_list_2)
+model_df$AIC <- model_AICs
+model_df$RSquared <- model_r2s
+model_df$subjective_rank <- c("1", "2", "3", "4","5","6")
+model_df$rejection_reason <- c("None",
+                               "None", 
+                               "Transition Time not Stat Sig.",
+                               "Age Band not Stat Sig.",
+                               "Transition Time not Stat Sig.",
+                               "No interaction Stat Sig.")
+model_df <- data.frame(t(model_df))
+
+model_df <- add_column(model_df, row_names, .before=1)
+model_df <- model_df %>% mutate_all(~ as.character(.))
+ft <- flextable(model_df)
+ft
+
+```
+
+
+In the table above, I’ve subjectively rank-ordered what I feel are the best models for the dataset. I've also included in the table the rejection reason for each model not discussed below.    
+In choosing between the top two models, this is where the AIC and Adjusted R^2 values came into play. Based solely on simplicity, the model ranked number 2 should win, however, based on Burnham & Anderson, 2004 – the difference in the two models' AIC values indicates that the model containing just performance events and age division is significantly less likely to be a better model than the one containing all predictors. Perhaps, with a larger dataset, we would find that overfitting has become a problem and the second-ranked model, or even potentially another model, would be a better description of the relationship.   
+
+  
+The best model’s features are shown below:  
+
+``` {r echo=FALSE}
+options(scipen=5)
+summary(model_mult_1)$coefficients
+
+```
+
+Starting with the intercept, you can see that the model estimate starts at 17,697.78 seconds. This means that since there are two factors, the base case for the intercept is a male between 18-24 years old. Being female is expected to add 1268.27 seconds to a participant’s overall score. The age group factor serves as an offset to the intercept base group of 18-24, based on a participant’s age to their overall time. The offset generally decreases as age increases, with professionals getting the largest offset of -15,115.93 seconds and 65-69-year-olds getting the smallest significant offset of -9051.46 seconds. The four predicting times are located towards the bottom of the list, notice that Swim Time adds 2.4409 seconds per second in the event and every second spent transitioning between events adds 1.5508 seconds to the expected overall time of a given participant. The contribution to overall time between the bike event time is 0.634 seconds per second in the event and 0.7897 in the run event.  
+
+  
+
+``` {r echo=FALSE, warning=FALSE, out.width="60%"}
+data_inner_joined$fit_m1 <- predict(model_mult_1)
+MAPE_RMSE <- data_inner_joined %>% summarize(MAPE=mean(abs((OverallTime.2021 - fit_m1)/OverallTime.2021))*100, RMSE = sqrt(mean((OverallTime.2021-fit_m1)^2)))
+
+par(mfrow=c(2,2))
+plot(model_mult_1)
+```
+  
+When applied to the whole dataset, the model has a mean absolute percentage error (MAPE) of 4.61% and a Root Mean Squared Error of 2916.36. A MAPE of less than 5% is considered to be a model that can sufficiently explain the relationship between the value of interest and the features of the model. Lastly, as a validation, I’ve displayed below the diagnostic four-pack of plots which do not show any cause for concern of the model’s validity. Overall, this model fulfills our requirement to have a reasonably easily explained model that explains how 2020 times relate to 2021 performance.   
+    
+#Secondary Research Question  
+In our second research question, we were asked to investigate whether there is a statistical difference in the performance of athletes during each event who participated in both years. Earlier in this project, I showed the distribution of 2021 overall times based on 2020 participation or not. Below you'll find a four pack of box charts showing the distribution of times by events in 2021 based on the participants previous year participation. These distributions show that there is an appearance of lower times in most of the times. I did not do any significance testing for the populations, so it is unknown whether the apparent relationships between the populations would be statistically significant.      
+```{r model_last, echo=FALSE, warning=FALSE, out.width="70%"}
+plot_overall <- ggplot(data_21, aes(y=OverallTime, x= Prev_Yr)) + 
+  geom_boxplot() + 
+  coord_flip() +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=90,hjust=1))
+plot_swim <- ggplot(data_21, aes(y=SwimTime, x= Prev_Yr)) + 
+  geom_boxplot() + 
+  coord_flip() + 
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=90,hjust=1))
+plot_bike <- ggplot(data_21, aes(y=BikeTime, x= Prev_Yr)) + 
+  geom_boxplot() + 
+  coord_flip() + 
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=90,hjust=1))
+plot_run <- ggplot(data_21, aes(y=RunTime, x= Prev_Yr)) + 
+  geom_boxplot() + 
+  coord_flip() + 
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=90,hjust=1))
+grid.arrange(plot_overall, plot_swim, plot_bike, plot_run, nrow=2)
+```
+  
+#Summary  
+For the primary research question, we were able to create a model that explains approximately 82.4% of the variance in Overall time in 2021 with 2020 event performance times with a model that can be explained in its entirety in a single paragraph. Furthermore, this model is able to predict an outcome in 2021 given 2020 event times with a MAPE of 4.61%. The secondary research question appears to have some relationships that indicate that participants who participated in both years performed, on average, better than those who did not. 
